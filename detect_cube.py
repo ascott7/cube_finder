@@ -15,6 +15,43 @@ def auto_canny(image, sigma=0.33):
     # return the edged image
     return edged
 
+# http://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python/13849249#13849249
+def unit_vector(vector):
+    """ Returns the unit vector of the vector.  """
+    return vector / np.linalg.norm(vector)
+
+# calculate the angle formed by line (pt1, pt2) and (pt2, pt3) and the difference between
+# the lengths of the two lines
+# some code from http://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python/13849249#13849249
+def angle_and_lengths(pt1, pt2, pt3):
+    v1 = np.array(pt1) - np.array(pt2)
+    v2 = np.array(pt3) - np.array(pt2)
+    length_diff = abs(np.linalg.norm(v1) - np.linalg.norm(v2))
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    return math.degrees(np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))), length_diff
+    
+# pick centers that actually correspond to cube faces
+def pick_centers(centers):
+    corners = []
+    for i in range(len(centers)):
+        for j in range(i+1, len(centers)):
+            for k in range(j+1, len(centers)):
+                # check if the 3 points form a corner with a near 90 degree angle
+                angle_1, ld_1 = angle_and_lengths(centers[i], centers[j], centers[k])
+                angle_2, ld_2 = angle_and_lengths(centers[j], centers[i], centers[k])
+                angle_3, ld_3 = angle_and_lengths(centers[i], centers[k], centers[j])
+
+                angle_thresh = 5
+                length_thresh = 5
+                if angle_1 > 90-angle_thresh and angle_1 < 90+angle_thresh and ld_1 < length_thresh:
+                    corners.append([centers[i], centers[j], centers[k]])
+                elif angle_2 > 90-angle_thresh and angle_2 < 90+angle_thresh and ld_2 < length_thresh:
+                    corners.append([centers[j], centers[i], centers[k]])
+                elif angle_3 > 90-angle_thresh and angle_3 < 90+angle_thresh and ld_3 < length_thresh:
+                    corners.append([centers[i], centers[k], centers[j]])
+
+    return corners
 
 def find_shapes(img):
     rows,cols,channels = img.shape
@@ -34,7 +71,8 @@ def find_shapes(img):
     cv2.imwrite('contours.png', img_copy)
 
     img_copy = img_small.copy()
-    new_img = np.zeros((rows/10, cols/10))
+    new_img = np.zeros((rows/10, cols/10, 3))
+    centers = []
     for contour in contours:
         peri = cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, 0.04 * peri, True)
@@ -64,6 +102,7 @@ def find_shapes(img):
                 color = (random.randint(0, 255), random.randint(0,255), random.randint(0,255))
                 cv2.drawContours(img_copy, [approx], 0, color, -1)
                 cv2.rectangle(new_img, (cX-2, cY-2), (cX+2, cY+2), (255,0,0), -1)
+                centers.append((cX, cY))
             
             #(x, y, w, h) = cv2.boundingRect(approx)
 	    #ar = w / float(h)
@@ -71,7 +110,11 @@ def find_shapes(img):
             #    color = (random.randint(0, 255), random.randint(0,255), random.randint(0,255))
             #    cv2.drawContours(img_copy, [contour], 0, color, -1)
 
-
+    corners = pick_centers(centers)
+    for corner in corners:
+        color = (random.randint(0, 255), random.randint(0,255), random.randint(0,255))
+        cv2.line(new_img, corner[0], corner[1], color, 1)
+        cv2.line(new_img, corner[1], corner[2], color, 1)
 
     cv2.imwrite('approximated_squares.png', img_copy)
     cv2.imwrite('approximated_centers.png', new_img)
