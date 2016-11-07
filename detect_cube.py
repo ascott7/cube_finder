@@ -98,11 +98,13 @@ def contour_is_square_old(contour):
 def contour_is_square(contour):
     peri = cv2.arcLength(contour, True)
     area = cv2.contourArea(contour)
-    if area == 0:
+    # we should probably change these #s to be some fraction of the rows/cols of the input image
+    if area < 36 or area > 400:
         return False
 
     ap_ratio = (float(peri)/4) / math.sqrt(area)
-    return ap_ratio > 0.8 and ap_ratio < 1.2
+    thresh = 0.3
+    return ap_ratio > 1.0-thresh and ap_ratio < 1.0+thresh
 
 def contour_center(contour):
     peri = cv2.arcLength(contour, True)
@@ -116,10 +118,10 @@ def contour_center(contour):
 
 def find_shapes(img):
     rows,cols,channels = img.shape
-    img_small = cv2.resize(img, (cols/5, rows/5))
+    img_small = cv2.resize(cv2.blur(img, (3,3)), (cols/5, rows/5))
     edges = auto_canny(img_small)
     cv2.imwrite('auto_edges.png', edges)
-    edges = cv2.dilate(edges, np.ones((4,4)), iterations=1)
+    edges = cv2.dilate(edges, np.ones((5,5)), iterations=1)
     edges = 255-edges
     cv2.imwrite('auto_edges_dilated.png', edges)
     contour_img, contours, hierarchy = cv2.findContours(edges.copy(),\
