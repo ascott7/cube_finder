@@ -1,4 +1,4 @@
-import cv2, sys, time, random
+import cv2, sys, time, random, os
 import numpy as np
 import math
 
@@ -99,7 +99,7 @@ def contour_is_square(contour):
     peri = cv2.arcLength(contour, True)
     area = cv2.contourArea(contour)
     # we should probably change these #s to be some fraction of the rows/cols of the input image
-    if area < 36 or area > 400:
+    if area < 36 or area > 500:
         return False
 
     ap_ratio = (float(peri)/4) / math.sqrt(area)
@@ -120,49 +120,71 @@ def find_shapes(img):
     rows,cols,channels = img.shape
     img_small = cv2.resize(cv2.blur(img, (3,3)), (cols/5, rows/5))
     edges = auto_canny(img_small)
-    cv2.imwrite('auto_edges.png', edges)
-    edges = cv2.dilate(edges, np.ones((5,5)), iterations=1)
-    edges = 255-edges
-    cv2.imwrite('auto_edges_dilated.png', edges)
-    contour_img, contours, hierarchy = cv2.findContours(edges.copy(),\
+    #cv2.imwrite('auto_edges.png', edges)
+    edges_dilated = cv2.dilate(edges, np.ones((5,5)), iterations=1)
+    edges_dilated = 255-edges_dilated
+    #cv2.imwrite('auto_edges_dilated.png', edges)
+    contour_img, contours, hierarchy = cv2.findContours(edges_dilated.copy(),\
                             cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    img_copy = img_small.copy()
+    contour_img = img_small.copy()
     for contour in contours:
         color = (random.randint(0, 255), random.randint(0,255), random.randint(0,255))
-        cv2.drawContours(img_copy, [contour], 0, color, 1)
-    cv2.imwrite('contours.png', img_copy)
-    img_copy = img_small.copy()
-    new_img = np.zeros((rows/5, cols/5, 3))
+        cv2.drawContours(contour_img, [contour], 0, color, 1)
+    #cv2.imwrite('contours.png', img_copy)
+    chosen_contour_img = img_small.copy()
+    center_img = np.zeros((rows/5, cols/5, 3))
     centers = []
-    start = time.time()
+    #start = time.time()
     for contour in contours:
         # perimiter to area ratio does a good job of detecting squares, we will
         # want to find something else for detecting rectangles
         if contour_is_square(contour):
             color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
-            cv2.drawContours(img_copy, [contour], 0, color, -1)    
+            cv2.drawContours(chosen_contour_img, [contour], 0, color, -1)    
             cX,cY = contour_center(contour)
             centers.append((cX,cY))
-            cv2.rectangle(new_img, (cX-2, cY-2), (cX+2, cY+2), (255,0,0), -1)
+            cv2.rectangle(center_img, (cX-2, cY-2), (cX+2, cY+2), (255,0,0), -1)
             
-    end = time.time()
-    corners = pick_centers(centers)
-    for corner in corners:
-        color = (random.randint(0, 255), random.randint(0,255), random.randint(0,255))
-        cv2.line(new_img, corner[0], corner[1], color, 1)
-        cv2.line(new_img, corner[1], corner[2], color, 1)
+    #end = time.time()
+    #corners = pick_centers(centers)
+    #for corner in corners:
+    #    color = (random.randint(0, 255), random.randint(0,255), random.randint(0,255))
+    #    cv2.line(new_img, corner[0], corner[1], color, 1)
+    #    cv2.line(new_img, corner[1], corner[2], color, 1)
     
     #centers2 = pick_centers2(centers)
     #box = cv2.boxPoints(cv2.minAreaRect(np.array([[c] for c in centers2])))
     #box = np.int0(box)
     #cv2.drawContours(new_img,[box],0,(255,255,255),1) 
-    cv2.imwrite('approximated_squares.png', img_copy)
-    cv2.imwrite('approximated_centers.png', new_img)
-    print "took", end - start
+    #cv2.imwrite('approximated_squares.png', img_copy)
+    #cv2.imwrite('approximated_centers.png', new_img)
+    return edges, edges_dilated, contour_img, chosen_contour_img, center_img
+    #print "took", end - start
 
 if __name__ == '__main__':
-    img = cv2.imread(sys.argv[1])
-    start = time.time()
-    find_shapes(img)
-    end = time.time()
-    print "took", end - start, "seconds"
+    runtimes = []
+    i = 1
+    output_base = 'output_images'
+    while os.path.exists(output_base + str(i)):
+        i += 1
+    os.mkdir('output_images' + str(i))
+    os.chdir('output_images' + str(i))
+    for subdir, dirs, files in os.walk(os.path.join('..', sys.argv[1])):
+        for f in files:
+            filename, ext = os.path.splitext(f)
+            if ext == '.png':
+                os.mkdir(filename)
+                os.chdir(filename)
+                print filename
+                img = cv2.imread(os.path.join('..',subdir,f))
+                start = time.time()
+                images = find_shapes(img)
+                end = time.time()
+                print "took", end - start, "seconds"
+                runtimes.append(end-start)
+                cv2.imwrite('auto_edges.png', images[0])
+                cv2.imwrite('auto_edges_dilated.png', images[1])
+                cv2.imwrite('contour.png', images[2])
+                cv2.imwrite('approximated_squares.png', images[3])
+                cv2.imwrite('contour_centers.png', images[4])
+                os.chdir('..')
