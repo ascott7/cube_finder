@@ -180,6 +180,96 @@ def segment_img(img):
     io.show()
     return segments
 
+
+def find_lines(img):
+    rows,cols,channels = img.shape
+    img_small = cv2.resize(img, (cols/5, rows/5), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    laplac = cv2.Laplacian(gray,cv2.CV_8U)
+    laplac = cv2.normalize(laplac, laplac, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    #adapt_thresh = cv2.adaptiveThreshold(laplac,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,\
+    #                                     cv2.THRESH_BINARY,5,2)
+    #adapt_thresh = auto_canny(laplac)
+    ret,adapt_thresh = cv2.threshold(laplac,20,255,cv2.THRESH_BINARY)
+    #adapt_thresh = cv2.erode(adapt_thresh, np.ones((2,2)))
+    #adapt_thresh = cv2.morphologyEx(adapt_thresh, cv2.MORPH_CLOSE, np.ones((2,2)), iterations=4)
+    #edges = auto_canny(img_small)
+    #edges = cv2.Canny(cv2.blur(img, (3,3)), 0, 50)
+    #edges = cv2.resize(edges, (cols,rows))
+
+    #edges_dilated = cv2.dilate(edges, np.ones((5,5)), iterations=1)
+    #edges_opened = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((5,5)))    
+    """
+    minLineLength = 20
+    maxLineGap = 10
+    lines = cv2.HoughLinesP(edges_dilated, 1, np.pi/180, 5, minLineLength, maxLineGap)
+    for line in lines:
+        x1,y1,x2,y2 = line[0]
+        cv2.line(img_small, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    """
+    lines = cv2.HoughLines(adapt_thresh,1,np.pi/180,200)
+    if lines is not None:
+        for line in lines:
+            rho,theta = line[0]
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a*rho
+            y0 = b*rho
+            x1 = int(x0 + 1000*(-b))*5
+            y1 = int(y0 + 1000*(a))*5
+            x2 = int(x0 - 1000*(-b))*5
+            y2 = int(y0 - 1000*(a))*5
+
+            cv2.line(img,(x1,y1),(x2,y2),(0,0,255),1)
+    
+    
+    return img, adapt_thresh, laplac
+
+def lbp(image):
+    rows,cols,channels = image.shape
+    small_img = cv2.resize(image, (cols/5,rows/5), interpolation=cv2.INTER_AREA)
+    num_points = 10
+    radius = 3
+    gray = cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY)
+    lbp = feature.local_binary_pattern(gray, num_points,
+			               radius, method="uniform")
+    lbp = cv2.normalize(lbp, lbp, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    #ret, thresh = cv2.threshold(lbp, 127,255,cv2.THRESH_BINARY)
+    thresh = cv2.adaptiveThreshold(lbp,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,\
+                                   cv2.THRESH_BINARY,11,2)
+    #gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    laplacian = cv2.Laplacian(gray,cv2.CV_64F)
+    laplacian = cv2.normalize(laplacian, laplacian, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    #ret,thresh = cv2.threshold(laplacian, 150,255, cv2.THRESH_BINARY)
+    laplacianx64f = cv2.Laplacian(gray,cv2.CV_64F)
+    abs_laplacian64f = np.absolute(laplacianx64f)
+    laplacian_8u = np.uint8(abs_laplacian64f)
+
+    ret,thresh = cv2.threshold(laplacian_8u, 20,255, cv2.THRESH_BINARY)
+    eroded = cv2.erode(thresh, np.ones((2,2)))
+    #thresh = cv2.adaptiveThreshold(laplacian_8u,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,\
+    #                               cv2.THRESH_BINARY,11,2)
+    
+    lines = cv2.HoughLines(eroded,1,np.pi/180,25)
+    if lines is not None:
+        for line in lines:
+            rho,theta = line[0]
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a*rho
+            y0 = b*rho
+            x1 = int(x0 + 1000*(-b))
+            y1 = int(y0 + 1000*(a))
+            x2 = int(x0 - 1000*(-b))
+            y2 = int(y0 - 1000*(a))
+
+            cv2.line(small_img,(x1,y1),(x2,y2),(255,0,0),1)
+    
+
+    return small_img
+
+
+
 if __name__ == '__main__':
     img = cv2.imread(sys.argv[1])
     #start = time.time()
