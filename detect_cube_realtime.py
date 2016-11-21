@@ -1,5 +1,5 @@
 import cv2,sys
-from detect_cube import find_shapes
+from detect_cube import CubeDetector
 import numpy as np
 
 
@@ -9,11 +9,11 @@ if __name__ == '__main__':
     else:
         cap = cv2.VideoCapture(0)
         cv2.namedWindow('DISPLAY')
-
+    cube_detector = CubeDetector()
     while cap.isOpened():
 	ret, image = cap.read()
         rows,cols,channels = image.shape
-        images = find_shapes(image)
+        images = cube_detector.find_shapes(image)
 	cv2.imshow('DISPLAY', cv2.resize(images[-1], (cols,rows)))
 
 	if cv2.waitKey(1) & 0xFF == ord('q'):

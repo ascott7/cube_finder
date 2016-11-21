@@ -375,45 +375,42 @@ class CubeDetector:
             cv2.resize(contour_img, (cols,rows)), cv2.resize(squares_found,(cols,rows)),\
             cv2.resize(chosen_contour_img, (cols,rows))
 
-    def run_detector(self):
-        runtimes = []
-        i = 1
-        output_base = 'output_images'
-        while os.path.exists(output_base + str(i)):
-            i += 1
-        os.mkdir('output_images' + str(i))
-        os.chdir('output_images' + str(i))
-        for subdir, dirs, files in os.walk(os.path.join('..', sys.argv[1])):
-            for f in files:
-                filename, ext = os.path.splitext(f)
-                if ext == '.png':
-                    #os.mkdir(filename)
-                    #os.chdir(filename)
-                    print filename
-                    img = cv2.imread(os.path.join(subdir,f))
-                    start = time.time()
-                    #images = find_lines(img)
-                    images = self.find_shapes(img)
-                    #images = lbp(img)
-                    end = time.time()
-                    print "took", end - start, "seconds"
-                    runtimes.append(end-start)
-                    #cv2.imwrite('lbp'+filename+'.png', images)
-                    #cv2.imwrite('auto_edges'+filename+'.png', images[0])
-                    #cv2.imwrite('auto_edges_dilated'+filename+'.png', images[1])
-
-                    """cv2.imwrite('detected_lines'+filename+'.png', images[0])
-                    cv2.imwrite('adapt_thresh'+filename+'.png', images[1])
-                    cv2.imwrite('laplacian'+filename+'.png', images[2])"""     
-                    cv2.imwrite('auto_edges'+filename+'.png', images[0])
-                    cv2.imwrite('auto_edges_dilated'+filename+'.png', images[1])
-                    cv2.imwrite('contour'+filename+'.png', images[2])
-                    cv2.imwrite('found_squares'+filename+'.png', images[3])
-                    cv2.imwrite('approximated_squares'+filename+'.png', images[4])
-
-                    #os.chdir('..')
-
 
 if __name__ == '__main__':
     cube_detector = CubeDetector()
-    cube_detector.run_detector()
+    runtimes = []
+    i = 1
+    output_base = 'output_images'
+    while os.path.exists(output_base + str(i)):
+        i += 1
+    os.mkdir('output_images' + str(i))
+    os.chdir('output_images' + str(i))
+    for subdir, dirs, files in os.walk(os.path.join('..', sys.argv[1])):
+        for f in files:
+            filename, ext = os.path.splitext(f)
+            if ext == '.png':
+                #os.mkdir(filename)
+                #os.chdir(filename)
+                print filename
+                img = cv2.imread(os.path.join(subdir,f))
+                start = time.time()
+                #images = find_lines(img)
+                images = cube_detector.find_shapes(img)
+                #images = lbp(img)
+                end = time.time()
+                print "took", end - start, "seconds"
+                runtimes.append(end-start)
+                #cv2.imwrite('lbp'+filename+'.png', images)
+                #cv2.imwrite('auto_edges'+filename+'.png', images[0])
+                #cv2.imwrite('auto_edges_dilated'+filename+'.png', images[1])
+
+                """cv2.imwrite('detected_lines'+filename+'.png', images[0])
+                cv2.imwrite('adapt_thresh'+filename+'.png', images[1])
+                cv2.imwrite('laplacian'+filename+'.png', images[2])"""     
+                cv2.imwrite('auto_edges'+filename+'.png', images[0])
+                cv2.imwrite('auto_edges_dilated'+filename+'.png', images[1])
+                cv2.imwrite('contour'+filename+'.png', images[2])
+                cv2.imwrite('found_squares'+filename+'.png', images[3])
+                cv2.imwrite('approximated_squares'+filename+'.png', images[4])
+
+                #os.chdir('..')
