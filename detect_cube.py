@@ -302,6 +302,13 @@ class CubeDetector:
                 grid_points[i][j][0] = sorted_pts[j][0]
                 grid_points[i][j][1] = sorted_pts[j][1]
 
+        grid_points = np.array(grid_points)
+        x_diffs = (grid_points[1] - grid_points[0])[:,0]
+        x_diffs2 = (grid_points[2] - grid_points[1])[:,0]
+        y_diffs = grid_points[:,:,1].T[1] - grid_points[:,:,1].T[0]
+        y_diffs2 = grid_points[:,:,1].T[2] - grid_points[:,:,1].T[1]
+        
+
         # TODO: account for whether lines are the same distance apart from one another
         grid_score = 0
         for i in range(cube_dim):
@@ -389,21 +396,13 @@ if __name__ == '__main__':
         for f in files:
             filename, ext = os.path.splitext(f)
             if ext == '.png':
-                #os.mkdir(filename)
-                #os.chdir(filename)
                 print filename
                 img = cv2.imread(os.path.join(subdir,f))
                 start = time.time()
-                #images = find_lines(img)
                 images = cube_detector.find_shapes(img)
-                #images = lbp(img)
                 end = time.time()
                 print "took", end - start, "seconds"
                 runtimes.append(end-start)
-                #cv2.imwrite('lbp'+filename+'.png', images)
-                #cv2.imwrite('auto_edges'+filename+'.png', images[0])
-                #cv2.imwrite('auto_edges_dilated'+filename+'.png', images[1])
-
                 """cv2.imwrite('detected_lines'+filename+'.png', images[0])
                 cv2.imwrite('adapt_thresh'+filename+'.png', images[1])
                 cv2.imwrite('laplacian'+filename+'.png', images[2])"""     
@@ -412,5 +411,3 @@ if __name__ == '__main__':
                 cv2.imwrite('contour'+filename+'.png', images[2])
                 cv2.imwrite('found_squares'+filename+'.png', images[3])
                 cv2.imwrite('approximated_squares'+filename+'.png', images[4])
-
-                #os.chdir('..')
