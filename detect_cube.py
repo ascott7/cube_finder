@@ -288,6 +288,7 @@ class CubeDetector:
 
     def straight_grid_score(self, points):    
         cube_dim = 3
+        line_distance_std_thresh = 5.0
         grid_points = [[[0,0] for x in range(3)] for y in range(3)] 
         # try assuming a straight 3x3 cube
         # group points by their y values
@@ -303,13 +304,14 @@ class CubeDetector:
                 grid_points[i][j][1] = sorted_pts[j][1]
 
         grid_points = np.array(grid_points)
-        x_diffs = (grid_points[1] - grid_points[0])[:,0]
-        x_diffs2 = (grid_points[2] - grid_points[1])[:,0]
-        y_diffs = grid_points[:,:,1].T[1] - grid_points[:,:,1].T[0]
-        y_diffs2 = grid_points[:,:,1].T[2] - grid_points[:,:,1].T[1]
-        
+        line_distances = []
+        line_distances.extend((grid_points[1] - grid_points[0])[:,0])
+        line_distances.extend((grid_points[2] - grid_points[1])[:,0])
+        line_distances.extend(grid_points[:,:,1].T[1] - grid_points[:,:,1].T[0])
+        line_distances.extend(grid_points[:,:,1].T[2] - grid_points[:,:,1].T[1])
+        if np.std(line_distances) > line_distance_std_thresh:
+            return float('inf')
 
-        # TODO: account for whether lines are the same distance apart from one another
         grid_score = 0
         for i in range(cube_dim):
             grid_score += np.std([grid_points[0][i][0], grid_points[1][i][0], grid_points[2][i][0]])
