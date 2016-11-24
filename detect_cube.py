@@ -60,27 +60,6 @@ class CubeDetector:
 
         return corners
 
-    # pick centers by finding points that have a reasonable bounding box
-    """def pick_centers2(centers):
-        if len(centers) <= 3:
-            return centers
-        useit_points = [centers.pop(0)]
-        useit_points.extend(pick_centers2(centers))
-        #print useit_points
-        (x,y,w,h) = cv2.boundingRect(np.array([[p] for p in useit_points]))
-        useit_ratio = w / float(h) 
-        print useit_ratio
-        loseit_points = pick_centers2(centers)
-        #print loseit_points
-        (x,y,w,h) = cv2.boundingRect(np.array([[p] for p in loseit_points]))
-        loseit_ratio = w / float(h)
-
-        thresh = 0.15
-        if useit_ratio > 1.0 - thresh and useit_ratio < 1.0 + thresh:
-            return useit_points
-        return loseit_points
-        """     
-
     def contour_is_square_old(self, contour):
         peri = cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, 0.04 * peri, True)
@@ -101,18 +80,6 @@ class CubeDetector:
             if np.std(distances) < 1:
                 return True
         return False
-
-    def contour_is_square(self, contour, img_area):
-        peri = cv2.arcLength(contour, True)
-        area = cv2.contourArea(contour)
-
-        # we should probably change these #s to be some fraction of the rows/cols of the input image
-        if float(area)/img_area < 0.002 or float(area)/img_area > 0.01:
-            return False
-
-        ap_ratio = (float(peri)/4) / math.sqrt(area)
-        thresh = 0.3
-        return ap_ratio > 1.0-thresh and ap_ratio < 1.0+thresh
 
     def find_bounding_square(self, contour, img_area):
         peri = cv2.arcLength(contour, True)
