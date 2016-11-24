@@ -22,65 +22,6 @@ class CubeDetector:
         # return the edged image
         return edged
 
-    # http://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python/13849249#13849249
-    def unit_vector(self, vector):
-        """ Returns the unit vector of the vector.  """
-        return vector / np.linalg.norm(vector)
-
-    # calculate the angle formed by line (pt1, pt2) and (pt2, pt3) and the difference between
-    # the lengths of the two lines
-    # some code from http://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python/13849249#13849249
-    def angle_and_lengths(self, pt1, pt2, pt3):
-        v1 = np.array(pt1) - np.array(pt2)
-        v2 = np.array(pt3) - np.array(pt2)
-        length_diff = abs(np.linalg.norm(v1) - np.linalg.norm(v2))
-        v1_u = unit_vector(v1)
-        v2_u = unit_vector(v2)
-        return math.degrees(np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))), length_diff
-        
-    # pick centers that actually correspond to cube faces
-    def pick_centers(self, centers):
-        corners = []
-        for i in range(len(centers)):
-            for j in range(i+1, len(centers)):
-                for k in range(j+1, len(centers)):
-                    # check if the 3 points form a corner with a near 90 degree angle
-                    angle_1, ld_1 = angle_and_lengths(centers[i], centers[j], centers[k])
-                    angle_2, ld_2 = angle_and_lengths(centers[j], centers[i], centers[k])
-                    angle_3, ld_3 = angle_and_lengths(centers[i], centers[k], centers[j])
-
-                    angle_thresh = 5
-                    length_thresh = 5
-                    if angle_1 > 90-angle_thresh and angle_1 < 90+angle_thresh and ld_1 < length_thresh:
-                        corners.append([centers[i], centers[j], centers[k]])
-                    elif angle_2 > 90-angle_thresh and angle_2 < 90+angle_thresh and ld_2 < length_thresh:
-                        corners.append([centers[j], centers[i], centers[k]])
-                    elif angle_3 > 90-angle_thresh and angle_3 < 90+angle_thresh and ld_3 < length_thresh:
-                        corners.append([centers[i], centers[k], centers[j]])
-
-        return corners
-
-    def contour_is_square_old(self, contour):
-        peri = cv2.arcLength(contour, True)
-        approx = cv2.approxPolyDP(contour, 0.04 * peri, True)
-        
-        # 4 sides
-        if len(approx) == 4 or len(approx) == 5 or len(approx) == 6:
-            # only keep contours that are square/circular enough in nature
-            M = cv2.moments(approx)
-            if M["m00"] == 0:
-                return False
-            cX = int(M["m10"] / M["m00"])
-            cY = int(M["m01"] / M["m00"])
-
-            distances = []
-            for p in approx:
-                distances.append(math.sqrt((p[0][0] - cX)**2 + (p[0][1] - cY)**2))
-                
-            if np.std(distances) < 1:
-                return True
-        return False
-
     def find_bounding_square(self, contour, img_area):
         peri = cv2.arcLength(contour, True)
         area = cv2.contourArea(contour)
@@ -97,7 +38,7 @@ class CubeDetector:
         bounding_area = bounding_line1*bounding_line2
 
         ap_ratio = (float(peri)/4) / math.sqrt(area)
-        a_br_diff = bounding_area - area#float(bounding_area - area) / bounding_area
+        a_br_diff = bounding_area - area
         ap_thresh = 0.3
         a_br_thresh = 150
         if abs(1.0 - ap_ratio) < ap_thresh and a_br_diff < a_br_thresh:
@@ -233,7 +174,7 @@ class CubeDetector:
             for row in col:
                 found_pts.add(row)
         if len(found_pts) != 9:
-            return float('inf')
+            return float('inf'), []
 
         # calculate the score as the residuals from a best fit line through each row and column
         # TODO: account for how parallel the lines are to one another and whether they are the
@@ -251,7 +192,7 @@ class CubeDetector:
             if len(resid) == 1:
                 grid_score += resid
 
-        return grid_score
+        return grid_score, grid_points
 
     def straight_grid_score(self, points):    
         cube_dim = 3
@@ -277,7 +218,7 @@ class CubeDetector:
         line_distances.extend(grid_points[:,:,1].T[1] - grid_points[:,:,1].T[0])
         line_distances.extend(grid_points[:,:,1].T[2] - grid_points[:,:,1].T[1])
         if np.std(line_distances) > line_distance_std_thresh:
-            return float('inf')
+            return float('inf'), []
 
         grid_score = 0
         for i in range(cube_dim):
@@ -285,7 +226,7 @@ class CubeDetector:
         for j in range(cube_dim):
             grid_score += np.std([grid_points[j][0][1], grid_points[j][1][1], grid_points[j][2][1]])
             
-        return grid_score
+        return grid_score, grid_points
 
     def find_shapes(self, img):
         rows,cols,channels = img.shape
@@ -337,15 +278,16 @@ class CubeDetector:
             # exponentially explode, for now we simply don't try
             if len(gc) >= 9 and len(gc) <= 14:
                 for c in itertools.combinations(gc, 9):
-                    # we should adjust the grid score functions to also return the
-                    # grid of points they detected so we don't have to reconstruct it
-                    grid_scores.append([self.straight_grid_score(c), c])
-                    grid_scores.append([self.tilted_grid_score(c), c])
+                    # get the grid scores and the grids
+                    grid_scores.append(self.straight_grid_score(c))
+                    grid_scores.append(self.tilted_grid_score(c))
                 grid_scores.sort()
-                if grid_scores[0][0] < 50:
-                    for c in grid_scores[0][1]:
-                        color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
-                        cv2.rectangle(chosen_contour_img, (c[0]-4, c[1]-4), (c[0]+4, c[1]+4), color, -1)
+                print grid_scores
+                if len(grid_scores) > 0 and grid_scores[0][0] < 50:
+                    for row in grid_scores[0][1]:
+                        for col in row:
+                            color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
+                            cv2.rectangle(chosen_contour_img, (col[0]-4, col[1]-4), (col[0]+4, col[1]+4), color, -1)
 
         return cv2.resize(edges, (cols,rows)), cv2.resize(edges_dilated, (cols,rows)),\
             cv2.resize(contour_img, (cols,rows)), cv2.resize(squares_found,(cols,rows)),\
