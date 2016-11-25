@@ -196,7 +196,7 @@ class CubeDetector:
 
     def straight_grid_score(self, points):    
         cube_dim = 3
-        line_distance_std_thresh = 5.0
+        line_distance_std_thresh = 3.0
         grid_points = [[[0,0] for x in range(3)] for y in range(3)] 
         # try assuming a straight 3x3 cube
         # group points by their y values
@@ -225,7 +225,6 @@ class CubeDetector:
             grid_score += np.std([grid_points[0][i][0], grid_points[1][i][0], grid_points[2][i][0]])
         for j in range(cube_dim):
             grid_score += np.std([grid_points[j][0][1], grid_points[j][1][1], grid_points[j][2][1]])
-            
         return grid_score, grid_points
 
     def find_shapes(self, img):
@@ -282,16 +281,16 @@ class CubeDetector:
                     grid_scores.append(self.straight_grid_score(c))
                     grid_scores.append(self.tilted_grid_score(c))
                 grid_scores.sort()
-                print grid_scores
-                if len(grid_scores) > 0 and grid_scores[0][0] < 50:
-                    for row in grid_scores[0][1]:
-                        for col in row:
-                            color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
-                            cv2.rectangle(chosen_contour_img, (col[0]-4, col[1]-4), (col[0]+4, col[1]+4), color, -1)
-
-        return cv2.resize(edges, (cols,rows)), cv2.resize(edges_dilated, (cols,rows)),\
+        found_grid = []
+        if len(grid_scores) > 0 and grid_scores[0][0] < 50:
+            found_grid = grid_scores[0][1]
+            for row in grid_scores[0][1]:
+                for col in row:
+                    color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
+                    cv2.rectangle(chosen_contour_img, (col[0]-4, col[1]-4), (col[0]+4, col[1]+4), color, -1)
+        return found_grid, (cv2.resize(edges, (cols,rows)), cv2.resize(edges_dilated, (cols,rows)),\
             cv2.resize(contour_img, (cols,rows)), cv2.resize(squares_found,(cols,rows)),\
-            cv2.resize(chosen_contour_img, (cols,rows))
+            cv2.resize(chosen_contour_img, (cols,rows)))
 
 
 if __name__ == '__main__':
@@ -310,7 +309,7 @@ if __name__ == '__main__':
                 print filename
                 img = cv2.imread(os.path.join(subdir,f))
                 start = time.time()
-                images = cube_detector.find_shapes(img)
+                images = cube_detector.find_shapes(img)[1]
                 end = time.time()
                 print "took", end - start, "seconds"
                 runtimes.append(end-start)
