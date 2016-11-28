@@ -6,11 +6,15 @@ from skimage import feature
 
 class CubeDetector:
     def __init__(self):
+        self.img = None
+        self.rows = None
+        self.cols = None
+        self.resize_factor = None
         self.last_x = None
         self.last_y = None
 
     # http://www.pyimagesearch.com/2015/04/06/zero-parameter-automatic-canny-edge-detection-with-python-and-opencv/
-    def auto_canny(self, image, sigma=0.33):
+    def _auto_canny(self, image, sigma=0.33):
         # compute the median of the single channel pixel intensities
         v = np.median(image)
         
@@ -22,7 +26,7 @@ class CubeDetector:
         # return the edged image
         return edged
 
-    def find_bounding_square(self, contour, img_area):
+    def _find_bounding_square(self, contour, img_area):
         peri = cv2.arcLength(contour, True)
         area = cv2.contourArea(contour)
 
@@ -45,7 +49,7 @@ class CubeDetector:
             return box
         return None
 
-    def contour_center(self, contour):
+    def _contour_center(self, contour):
         peri = cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, 0.04 * peri, True)
         M = cv2.moments(approx)
@@ -55,15 +59,15 @@ class CubeDetector:
         cY = int(M["m01"] / M["m00"])
         return (cX, cY)
 
-    def prune_centers(self, centers, img_width):
+    def _prune_centers(self, centers, img_width):
         while True:
             num_centers = len(centers)
-            centers = self.prune_centers_helper(centers, img_width)
+            centers = self._prune_centers_helper(centers, img_width)
             if num_centers == len(centers):
                 return centers
         return []
 
-    def prune_centers_helper(self, centers, img_width):
+    def _prune_centers_helper(self, centers, img_width):
         dist_thresh = 0.25
         pruned_centers = []
         if len(centers) < 4:
@@ -79,7 +83,7 @@ class CubeDetector:
                 pruned_centers.append(ci)
         return pruned_centers
 
-    def group_centers(self, centers, img_width):
+    def _group_centers(self, centers, img_width):
         if len(centers) <= 1:
             return centers
         dist_thresh = 0.12
@@ -121,7 +125,7 @@ class CubeDetector:
                                 break
         return clusters
 
-    def tilted_grid_score(self, points):
+    def _tilted_grid_score(self, points):
         x_vals = [p[0] for p in points]
         y_vals = [p[1] for p in points]
         min_y = min(y_vals)
@@ -194,7 +198,7 @@ class CubeDetector:
 
         return grid_score, grid_points
 
-    def straight_grid_score(self, points):    
+    def _straight_grid_score(self, points):    
         cube_dim = 3
         line_distance_std_thresh = 3.0
         grid_points = [[[0,0] for x in range(3)] for y in range(3)] 
@@ -227,13 +231,8 @@ class CubeDetector:
             grid_score += np.std([grid_points[j][0][1], grid_points[j][1][1], grid_points[j][2][1]])
         return grid_score, grid_points
 
-    def find_shapes(self, img):
-        rows,cols,channels = img.shape
-        resize_factor = 4
-        # use a smaller version of the image
-        img_small = cv2.resize(img, (cols/resize_factor,rows/resize_factor), interpolation=cv2.INTER_AREA)
-        #img_small = cv2.resize(cv2.blur(img, (3,3)), (cols/5, rows/5), interpolation=cv2.INTER_AREA)
-        edges = self.auto_canny(img_small, 0.2)
+    def _find_shapes(self):
+        edges = self._auto_canny(self.img, 0.2)
         edges_dilated = cv2.dilate(edges, np.ones((5,5)), iterations=1)
         edges_dilated = 255-edges_dilated
 
@@ -241,19 +240,19 @@ class CubeDetector:
         contour_img, contours, hierarchy = cv2.findContours(edges_dilated.copy(),\
                                 cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         # draw the contours to help with debugging
-        contour_img = img_small.copy()
+        contour_img = self.img.copy()
         for contour in contours:
             color = (random.randint(0, 255), random.randint(0,255), random.randint(0,255))
             cv2.drawContours(contour_img, [contour], 0, color, 1)
 
-        squares_found = img_small.copy()
+        squares_found = self.img.copy()
         centers = []
-        img_area = rows/resize_factor*cols/resize_factor
+        img_area = self.rows/self.resize_factor*self.cols/self.resize_factor
         # for each contour check if the contour seems to be a square shape
         for contour in contours:
-            detected_square = self.find_bounding_square(contour, img_area)
+            detected_square = self._find_bounding_square(contour, img_area)
             if detected_square is not None:
-                cX,cY = self.contour_center(contour)
+                cX,cY = self._contour_center(contour)
                 cX,cY = cX,cY
                 centers.append((cX,cY))
                 # draw the square shaped contours to help with debugging
@@ -261,14 +260,14 @@ class CubeDetector:
                 cv2.drawContours(squares_found, [contour], 0, color, -1)
 
         # remove centers that aren't close to at least 3 other centers
-        pruned_centers = self.prune_centers(centers, cols/resize_factor)
+        pruned_centers = self._prune_centers(centers, self.cols/self.resize_factor)
 
         # cluster the centers into groups where every center in each group is within X distance
         # of the other centers in the group (this function is probably pretty inefficient right
         # now so we should try to fix that)
-        grouped_centers = self.group_centers(pruned_centers, cols/resize_factor)
+        grouped_centers = self._group_centers(pruned_centers, self.cols/self.resize_factor)
         
-        chosen_contour_img = img_small.copy()
+        chosen_contour_img = self.img.copy()
         grid_scores = []
         # in each of the groups of centers, look for a grid shape
         # this current logic below assumes only 1 match will exist, we will want to adjust that
@@ -278,8 +277,8 @@ class CubeDetector:
             if len(gc) >= 9 and len(gc) <= 14:
                 for c in itertools.combinations(gc, 9):
                     # get the grid scores and the grids
-                    grid_scores.append(self.straight_grid_score(c))
-                    grid_scores.append(self.tilted_grid_score(c))
+                    grid_scores.append(self._straight_grid_score(c))
+                    grid_scores.append(self._tilted_grid_score(c))
                 grid_scores.sort()
         found_grid = []
         if len(grid_scores) > 0 and grid_scores[0][0] < 50:
@@ -288,10 +287,22 @@ class CubeDetector:
                 for col in row:
                     color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
                     cv2.rectangle(chosen_contour_img, (col[0]-4, col[1]-4), (col[0]+4, col[1]+4), color, -1)
-        return found_grid, (cv2.resize(edges, (cols,rows)), cv2.resize(edges_dilated, (cols,rows)),\
-            cv2.resize(contour_img, (cols,rows)), cv2.resize(squares_found,(cols,rows)),\
-            cv2.resize(chosen_contour_img, (cols,rows)))
+        return found_grid, (cv2.resize(edges, (self.cols,self.rows)), cv2.resize(edges_dilated, (self.cols,self.rows)),\
+            cv2.resize(contour_img, (self.cols,self.rows)), cv2.resize(squares_found,(self.cols,self.rows)),\
+            cv2.resize(chosen_contour_img, (self.cols,self.rows)))
 
+    def _get_color(self):
+        return
+
+    def get_face(self, img):
+        self.rows, self.cols, channels = img.shape
+        self.resize_factor = 4
+        # use a smaller version of the image
+        self.img = cv2.resize(img, (self.cols/self.resize_factor, self.rows/self.resize_factor), interpolation=cv2.INTER_AREA)
+        grid, images = self._find_shapes()
+        # colored_grid = self.get_color(grid)
+        # return colored_grid
+        return grid, images
 
 if __name__ == '__main__':
     cube_detector = CubeDetector()
@@ -309,7 +320,7 @@ if __name__ == '__main__':
                 print filename
                 img = cv2.imread(os.path.join(subdir,f))
                 start = time.time()
-                images = cube_detector.find_shapes(img)[1]
+                grid, images = cube_detector.get_face(img)
                 end = time.time()
                 print "took", end - start, "seconds"
                 runtimes.append(end-start)
