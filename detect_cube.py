@@ -10,6 +10,9 @@ class CubeDetector:
         self.rows = None
         self.cols = None
         self.resize_factor = None
+        # the orthogonal distance from the center of the piece to its perimeter
+        # i.e. height/2
+        self.size = None
         self.last_x = None
         self.last_y = None
 
@@ -198,7 +201,7 @@ class CubeDetector:
 
         return grid_score, grid_points
 
-    def _straight_grid_score(self, points):    
+    def _straight_grid_score(self, points):
         cube_dim = 3
         line_distance_std_thresh = 3.0
         grid_points = [[[0,0] for x in range(3)] for y in range(3)] 
@@ -215,12 +218,7 @@ class CubeDetector:
                 grid_points[i][j][0] = sorted_pts[j][0]
                 grid_points[i][j][1] = sorted_pts[j][1]
 
-        grid_points = np.array(grid_points)
-        line_distances = []
-        line_distances.extend((grid_points[1] - grid_points[0])[:,0])
-        line_distances.extend((grid_points[2] - grid_points[1])[:,0])
-        line_distances.extend(grid_points[:,:,1].T[1] - grid_points[:,:,1].T[0])
-        line_distances.extend(grid_points[:,:,1].T[2] - grid_points[:,:,1].T[1])
+        line_distances = self._get_line_distances(grid_points)
         if np.std(line_distances) > line_distance_std_thresh:
             return float('inf'), []
 
@@ -291,8 +289,65 @@ class CubeDetector:
             cv2.resize(contour_img, (self.cols,self.rows)), cv2.resize(squares_found,(self.cols,self.rows)),\
             cv2.resize(chosen_contour_img, (self.cols,self.rows)))
 
-    def _get_color(self):
+    def _find_size(self, grid):
+        line_distances = self._get_line_distances(grid)
+        self.size = int((np.mean(line_distances) / 2) * 0.8)
+
+    def _get_line_distances(self, grid_points):
+        grid_points = np.array(grid_points)
+        line_distances = []
+        line_distances.extend((grid_points[1] - grid_points[0])[:,1])
+        line_distances.extend((grid_points[2] - grid_points[1])[:,1])
+        line_distances.extend(grid_points[:,:,0].T[1] - grid_points[:,:,0].T[0])
+        line_distances.extend(grid_points[:,:,0].T[2] - grid_points[:,:,0].T[1])
+        return line_distances
+
+    """
+    def _get_color(self, grid):
+        # Hue range [0, 179], Saturation range [0, 255], Value range [0, 255]
+        # convert to HSV
+        hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+        for line in grid:
+            for row, col in line:
+                piece = hsv[col-self.size:col+self.size, row-self.size:row+self.size]
+                print "piece"
+                print (piece)
+                print "col, row"
+                print col
+                print row
+                print "size"
+                print self.size
+                if self._is_red(piece):
+                    print "is red"
         return
+
+    def _is_blue(self, piece):
+        blue = np.uint8([[[0,0,255]]])
+        hue, saturation, value = np.ndarray.flatten(cv2.cvtColor(blue, cv2.COLOR_BGR2HSV))
+        blue_lower = np.array([hue-10, 100, 100])
+        blue_upper = np.array([hue+10, 255, 255])
+
+        # threshold the image to get only blue colors
+        mask = cv2.inRange(piece, blue_lower, blue_upper)
+
+        print (mask)
+
+        return True
+
+    def _is_red(self, piece):
+        red = np.uint8([[[255,0,0]]])
+        hue, saturation, value = np.ndarray.flatten(cv2.cvtColor(red, cv2.COLOR_BGR2HSV))
+        red_lower = np.array([hue-10, 100, 100])
+        red_upper = np.array([hue+10, 255, 255])
+
+        # threshold the image to get only red colors
+        mask = cv2.inRange(piece, red_lower, red_upper)
+        # res = cv2.bitwise_and(frame, frame, mask = mask)
+
+        print (mask)
+
+        return True
+    """
 
     def get_face(self, img):
         self.rows, self.cols, channels = img.shape
@@ -300,8 +355,10 @@ class CubeDetector:
         # use a smaller version of the image
         self.img = cv2.resize(img, (self.cols/self.resize_factor, self.rows/self.resize_factor), interpolation=cv2.INTER_AREA)
         grid, images = self._find_shapes()
-        # colored_grid = self.get_color(grid)
+        # self._find_size(grid)
+        # colored_grid = self._get_color(grid)
         # return colored_grid
+        # return colored_grid, images
         return grid, images
 
 if __name__ == '__main__':
