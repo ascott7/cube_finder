@@ -13,8 +13,9 @@ if __name__ == '__main__':
     while cap.isOpened():
 	ret, image = cap.read()
         rows,cols,channels = image.shape
-        images = cube_detector.find_shapes(image)
-	cv2.imshow('DISPLAY', cv2.resize(images[1][-1], (cols,rows)))
+
+        images = cube_detector.get_face(image)
+	cv2.imshow('DISPLAY', cv2.resize(images[-1][-1], (cols,rows)))
 
 	if cv2.waitKey(1) & 0xFF == ord('q'):
             cv2.imwrite('test.png', image)
