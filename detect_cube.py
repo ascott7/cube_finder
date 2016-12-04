@@ -27,6 +27,8 @@ class CubeDetector:
         # apply automatic Canny edge detection using the computed median
         lower = int(max(0, (1.0 - sigma) * v))
         upper = int(min(255, (1.0 + sigma) * v))
+        lower=60
+        upper=100
         edged = cv2.Canny(image, lower, upper)
      
         # return the edged image
@@ -245,15 +247,27 @@ class CubeDetector:
         
 
     def _remove_small_contours(self, edges):
-        edges = cv2.dilate(edges, np.ones((3,3)))
+        edges = cv2.dilate(edges, np.ones((2,2)))
         # find contours, which should include squares from the cube faces
         contour_img, contours, hierarchy = cv2.findContours(edges.copy(),\
                                 cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        cnt_area_thresh = 40
+        tmp = self.img.copy()
         for contour in contours:
-            contour_area = cv2.contourArea(contour)
+            color = (random.randint(0, 255), random.randint(0,255), random.randint(0,255))
+            cv2.drawContours(tmp, [contour], 0, color, 1)
+        cv2.imwrite('temp.png', tmp)
+        cnt_area_thresh = 100
+        for contour in contours:
+            #contour_area = cv2.contourArea(contour)
             # if the contour is small, remove it completely
-            if contour_area < cnt_area_thresh:
+            bounding_rect = cv2.minAreaRect(contour)
+            box = cv2.boxPoints(bounding_rect)
+            box = np.int0(box)
+            bounding_line1 = math.sqrt((box[0][0]-box[1][0])**2 + (box[0][1]-box[1][1])**2)
+            bounding_line2 = math.sqrt((box[1][0]-box[2][0])**2 + (box[1][1]-box[2][1])**2)
+            bounding_area = bounding_line1*bounding_line2
+
+            if bounding_area < cnt_area_thresh:
                 cv2.drawContours(edges, [contour], -1, (0,0,0), -1)
 
         return edges
