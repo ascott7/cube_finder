@@ -3,6 +3,8 @@ import math, copy, itertools
 import numpy as np
 
 from skimage import feature
+from collections import OrderedDict
+from scipy.spatial import distance as dist
 
 class CubeDetector:
     def __init__(self):
@@ -12,12 +14,41 @@ class CubeDetector:
         self.rows = None
         self.cols = None
         self.resize_factor = 4
+        
         # the orthogonal distance from the center of the piece to its perimeter
         # i.e. height/2
         self.size = None
+        
         self.last_x = None
         self.last_y = None
         self.last_wh = None
+
+        # initialize the colors dictionary, containing the color
+        # name as the key and the RGB tuple as the value
+        colors = OrderedDict({
+            "red": (130, 20, 20),
+            "green": (0, 30, 30),
+            "blue": (0, 10, 80),
+            # "orange": (200, 100, 0),
+            "orange": (186, 81, 30),
+            # "orange": (120, 50, 25),
+            # "yellow": (100, 80, 20),
+            "yellow": (144, 126, 3),  
+            "white": (110, 110, 110)})
+ 
+        # allocate memory for the L*a*b* image, then initialize
+        # the color names list
+        lab = np.zeros((len(colors), 1, 3), dtype="uint8")
+        self.colorNames = []
+ 
+        # loop over the colors dictionary
+        for (i, (name, rgb)) in enumerate(colors.items()):
+            # update the L*a*b* array and the color names list
+            lab[i] = rgb
+            self.colorNames.append(name)
+ 
+        # convert the L*a*b* array from the RGB color space to L*a*b*
+        self.lab = cv2.cvtColor(lab, cv2.COLOR_RGB2LAB)
 
     # http://www.pyimagesearch.com/2015/04/06/zero-parameter-automatic-canny-edge-detection-with-python-and-opencv/
     def _auto_canny(self, image, sigma=0.33):
@@ -244,7 +275,6 @@ class CubeDetector:
         if tilted_grid_score < straight_grid_score:
             return tilted_grid_score, tilted_grid, tilt_angle
         return straight_grid_score, straight_grid, straight_angle
-        
 
     def _remove_small_contours(self, edges):
         edges = cv2.dilate(edges, np.ones((2,2)))
@@ -324,18 +354,16 @@ class CubeDetector:
         found_grid,angle,score = [], 0, float('inf')
         if len(grid_scores) > 0 and grid_scores[0][0] < 10:
             score,found_grid,angle = grid_scores[0]
-            print score
-            for row in found_grid:
-                for col in row:
-                    color = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
-                    cv2.rectangle(chosen_contour_img, (col[0]-4, col[1]-4), (col[0]+4, col[1]+4), color, -1)
+
         return found_grid, angle, [cv2.resize(edges, (self.cols,self.rows)), cv2.resize(edges_pruned, (self.cols,self.rows)), cv2.resize(edges_dilated, (self.cols,self.rows)),\
-            cv2.resize(contour_img, (self.cols,self.rows)), cv2.resize(squares_found,(self.cols,self.rows)),\
-            cv2.resize(chosen_contour_img, (self.cols,self.rows))]
+            cv2.resize(contour_img, (self.cols,self.rows)), cv2.resize(squares_found,(self.cols,self.rows))]
+            # cv2.resize(chosen_contour_img, (self.cols,self.rows))]
 
     def _find_size(self, grid):
         line_distances = self._get_line_distances(grid)
-        self.size = int((np.mean(line_distances) / 2) * 0.8)
+        self.size = int((np.mean(line_distances) / 2) * 0.5)
+        # print ("lines: ", line_distances)
+        # print ("size: ", self.size)
 
     def _get_line_distances(self, grid_points):
         grid_points = np.array(grid_points)
@@ -346,52 +374,103 @@ class CubeDetector:
         line_distances.extend(grid_points[:,:,0].T[2] - grid_points[:,:,0].T[1])
         return [abs(x) for x in line_distances]
 
-    """
-    def _get_color(self, grid):
-        # Hue range [0, 179], Saturation range [0, 255], Value range [0, 255]
-        # convert to HSV
-        hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+    def _get_color_face(self, grid):
+        # convert to l*a*b and hsv
+        img_lab = cv2.cvtColor(self.img, cv2.COLOR_BGR2LAB)
+        img_hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+
+        colors = []
+
         for line in grid:
-            for row, col in line:
-                piece = hsv[col-self.size:col+self.size, row-self.size:row+self.size]
-                print "piece"
-                print (piece)
-                print "col, row"
-                print col
-                print row
-                print "size"
-                print self.size
-                if self._is_red(piece):
-                    print "is red"
-        return
+            for col, row in line:
+                piece_lab = img_lab[row-self.size:row+self.size, col-self.size:col+self.size]
+                piece_hsv = img_hsv[row-self.size:row+self.size, col-self.size:col+self.size]
+                color_lab = self._get_color_lab(piece_lab)
+                color_hsv = self._get_color_hsv(piece_hsv)
+                if color_lab == color_hsv:
+                    colors.append(color_lab)
+                else:
+                    # add black for when the two methods cannot agree, for now
+                    colors.append("black")
+                    # colors.append("%s (lab), %s (hsv)" % (color_lab, color_hsv))
 
-    def _is_blue(self, piece):
-        blue = np.uint8([[[0,0,255]]])
-        hue, saturation, value = np.ndarray.flatten(cv2.cvtColor(blue, cv2.COLOR_BGR2HSV))
-        blue_lower = np.array([hue-10, 100, 100])
-        blue_upper = np.array([hue+10, 255, 255])
+        return colors
 
-        # threshold the image to get only blue colors
-        mask = cv2.inRange(piece, blue_lower, blue_upper)
+    def _get_color_hsv(self, piece):
+        # for determining red
+        hues = np.ndarray.flatten(piece[:,:,0])
+        wrapped_hues = [x + 179 if x < 10 else x for x in hues]
+        wrapped_mean = np.mean(wrapped_hues)
+        if wrapped_mean > 160:
+            if (np.amax(hues) - np.amin(hues) > 100 or np.amin(hues) > 100):
+                return "red"
+            else:
+                return "orange"
 
-        print (mask)
+        hue = np.mean(np.ndarray.flatten(piece[:,:,0]))
+        saturation = np.mean(np.ndarray.flatten(piece[:,:,1]))
+        value = np.mean(np.ndarray.flatten(piece[:,:,2]))
 
-        return True
+        # blue = np.uint8([[[255,0,0]]])
+        # hsv_blue = cv2.cvtColor(blue, cv2.COLOR_BGR2HSV)
+        # blue_hue, blue_saturation, blue_value = np.ndarray.flatten(hsv_blue)
+        # blue_lower = np.array([blue_hue-10, 50, 50])
+        # blue_upper = np.array([blue_hue+10, 255, 255])
+        blue_lower = np.array([110, 50, 50])
+        blue_upper = np.array([120, 255, 255])
 
-    def _is_red(self, piece):
-        red = np.uint8([[[255,0,0]]])
-        hue, saturation, value = np.ndarray.flatten(cv2.cvtColor(red, cv2.COLOR_BGR2HSV))
-        red_lower = np.array([hue-10, 100, 100])
-        red_upper = np.array([hue+10, 255, 255])
+        if (blue_lower[0] <= hue and hue <= blue_upper[0]) and \
+          (blue_lower[1] <= saturation and saturation <= blue_upper[1]) and \
+          (blue_lower[2] <= value and value <= blue_upper[2]):
+            return "blue"
 
-        # threshold the image to get only red colors
-        mask = cv2.inRange(piece, red_lower, red_upper)
-        # res = cv2.bitwise_and(frame, frame, mask = mask)
+        green_lower = np.array([85, 0, 45])
+        green_upper = np.array([105, 255, 60])
 
-        print (mask)
+        if (green_lower[0] <= hue and hue <= green_upper[0]) and \
+          (green_lower[1] <= saturation and saturation <= green_upper[1]) and \
+          (green_lower[2] <= value and value <= green_upper[2]):
+            return "green"
 
-        return True
-    """
+        yellow_lower = np.array([20, 50, 50])
+        yellow_upper = np.array([30, 255, 255])
+        if (yellow_lower[0] <= hue and hue <= yellow_upper[0]) and \
+          (yellow_lower[1] <= saturation and saturation <= yellow_upper[1]) and \
+          (yellow_lower[2] <= value and value <= yellow_upper[2]):
+            return "yellow"
+
+        return "white"
+
+    def _get_color_lab(self, piece):
+        # compute the average L*a*b* value of the piece
+        mean = cv2.mean(piece)[:3]
+ 
+        # initialize the minimum distance found thus far
+        minDist = (np.inf, None)
+ 
+        # loop over the known L*a*b* color values
+        for (i, row) in enumerate(self.lab):
+            # compute the distance between the current L*a*b*
+            # color value and the mean of the image
+            d = dist.euclidean(row[0], mean)
+ 
+            # if the distance is smaller than the current distance,
+            # then update the bookkeeping variable
+            if d < minDist[0]:
+                minDist = (d, i)
+ 
+        # return the name of the color with the smallest distance
+        return self.colorNames[minDist[1]]
+
+    def _str_to_BGR(self, color):
+        color_map = {"red": (0, 0, 255),
+                 "green": (0, 255, 0),
+                 "blue": (255, 0, 0),
+                 "orange": (255, 165, 0),
+                 "yellow": (0, 255, 255),
+                 "white": (255, 255, 255),
+                 "black": (0, 0, 0)}
+        return color_map[color]
 
     def get_face(self, img):
         self.rows, self.cols, channels = img.shape
@@ -430,17 +509,28 @@ class CubeDetector:
             #self.last_wh = None
         images.append(cv2.resize(rotated_centers_img, (self.cols,self.rows)))
 
-
         hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
         colors = []
         for row in found_grid:
             for col in row:
                 colors.append(hsv[col[1], col[0]])
         print colors
-        # self._find_size(grid)
-        # colored_grid = self._get_color(grid)
-        # return colored_grid
-        # return colored_grid, images
+
+        if len(found_grid) > 2:
+            self._find_size(found_grid)
+
+        colors = self._get_color_face(found_grid)
+
+        i = 0
+        colored_img = self.img.copy()
+        for row in found_grid:
+            for col in row:
+                color = self._str_to_BGR(colors[i]) # (255, 255, 0)
+                cv2.rectangle(colored_img, (col[0]-4, col[1]-4), (col[0]+4, col[1]+4), color, -1)
+                i += 1
+
+        images.append(cv2.resize(colored_img, (self.cols,self.rows)))
+
         return found_grid, angle, images
 
 if __name__ == '__main__':
